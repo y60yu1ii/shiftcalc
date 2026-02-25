@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排班路徑與轉場計算系統 (Pro)</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --danger: #dc2626;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --gray: #f8fafc;
+            --border: #e2e8f0;
+            --text: #334155;
+            --highlight: #eff6ff;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            color: var(--text);
+            background: #f1f5f9;
+            font-size: 14px;
+        }
+
+        h1, h2 { color: #0f172a; margin-top: 0; }
+
+        /* Card & Layout */
+        .card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .input-group { display: flex; align-items: center; gap: 8px; }
+        .input-group label { font-weight: 600; color: #475569; }
+
+        input, select {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+        button.success { background: var(--success); }
+        button.warning { background: var(--warning); color: white; }
+        button.dark { background: #334155; }
+
+        /* Address Manager */
+        .address-container {
+            height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fff;
+        }
+        .address-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 1fr 50px;
+            gap: 10px;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--gray);
+            align-items: center;
+        }
+        .address-row:nth-child(even) { background: #f8fafc; }
+        .addr-clean { color: var(--success); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Main Table */
+        .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        
+        th, td { padding: 12px; border: 1px solid var(--border); vertical-align: middle; }
+        th { background: #f1f5f9; text-align: left; font-weight: 700; color: #475569; position: sticky; top: 0; z-index: 10; }
+
+        .col-date { width: 90px; text-align: center; font-weight: 700; color: var(--primary); background: #fff; }
+        .col-time { width: 130px; font-variant-numeric: tabular-nums; }
+        .col-info { min-width: 200px; }
+        
+        /* Transit Columns */
+        .col-transit-info { width: 220px; background: #fffbeb; font-size: 0.9em; }
+        .col-transit-final { width: 100px; text-align: center; background: #ecfdf5; font-weight: 700; color: #047857; }
+        .col-daily { width: 100px; text-align: center; background: #fef2f2; font-weight: 700; color: #b91c1c; }
+
+        /* Elements */
+        .name-tag {
+            display: inline-block; padding: 2px 8px; background: #e0f2fe; color: #0369a1;
+            border-radius: 12px; font-weight: 600; font-size: 0.85em; margin-bottom: 4px;
+        }
+        .addr-text { color: #64748b; font-size: 0.9em; display: flex; align-items: center; gap: 4px; }
+        
+        .transit-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .t-label { color: #94a3b8; }
+        .t-val { font-weight: 600; }
+        .gap-val { color: #64748b; }
+        .api-val { color: #d97706; }
+
+        /* Logger & Progress */
+        .log-panel {
+            background: #1e293b; color: #34d399; padding: 15px; border-radius: 8px;
+            font-family: 'Consolas', monospace; font-size: 13px; height: 120px; overflow-y: auto;
+            margin-top: 15px; display: none;
+        }
+        .log-item { border-bottom: 1px solid #334155; padding: 2px 0; }
+        .log-err { color: #f87171; }
+        
+        .progress-track { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 10px; display: none;}
+        .progress-fill { height: 100%; background: var(--success); width: 0%; transition: width 0.3s; }
+
+        /* Footer Total */
+        .total-row { background: #1e293b; color: white; font-weight: bold; font-size: 1.1em; }
+        .total-row td { border: 1px solid #334155; }
+    </style>
+</head>
+<body>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+        <div>
+            <h1 style="margin:0;">排班路徑與轉場計算系統 <span style="font-size:0.5em; background:#2563eb; color:white; padding:2px 6px; border-radius:4px;">Pro</span></h1>
+        </div>
+        <div style="text-align:right;">
+             <button class="dark" onclick="exportToCSV()" id="exportBtnTop">📥 匯出報表 (CSV)</button>
+        </div>
+    </div>
+
+    <section class="card">
+        <h2>1. 資料匯入與設定</h2>
+        <div class="controls">
+            <div class="input-group">
+                <label>API Key:</label>
+                <input type="password" id="apiKey" placeholder="Google Maps API Key" style="width: 220px;">
+            </div>
+            <div class="input-group">
+                <label>年份:</label>
+                <input type="number" id="yearInput" value="2026" style="width: 70px;">
+            </div>
+            <div class="input-group">
+                <label>月份:</label>
+                <input type="number" id="monthInput" value="1" style="width: 60px;">
+            </div>
+        </div>
+
+        <div class="controls" style="background:white; border:none; padding:0;">
+            <div class="input-group">
+                <label>地址庫 (address.csv):</label>
+                <input type="file" id="addressInput" accept=".csv,.json">
+            </div>
+            <div class="input-group">
+                <label>班表 (DATA.csv):</label>
+                <input type="file" id="scheduleInput" accept=".csv">
+            </div>
+            <div style="margin-left:auto; display:flex; gap:10px;">
+                <button id="addPersonBtn" class="success" style="font-size:0.9em">+ 手動新增人員</button>
+                <button id="backupBtn" style="font-size:0.9em; background:#64748b;">備份地址 JSON</button>
+            </div>
+        </div>
+
+        <div id="addressList" class="address-container">
+            <div style="padding:40px; text-align:center; color:#94a3b8">請先匯入 address.csv</div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+            <h2>2. 計算結果</h2>
+            <div style="display:flex; align-items:center; gap:15px;">
+                <span id="statusText" style="font-weight:600; color:#475569;"></span>
+                <button id="calcBtn" class="warning" onclick="calculateAllTransits()">
+                    🚀 開始計算轉場
+                </button>
+            </div>
+        </div>
+
+        <div id="progressContainer" class="progress-track">
+            <div id="progressBar" class="progress-fill"></div>
+        </div>
+        <div id="logConsole" class="log-panel"></div>
+
+        <div class="table-container">
+            <table id="finalTable">
+                <thead>
+                    <tr>
+                        <th class="col-date">日期</th>
+                        <th class="col-time">時間</th>
+                        <th class="col-info">人員與地點</th>
+                        <th class="col-transit-info">轉場資訊 (Gap vs API)</th>
+                        <th class="col-transit-final">採計 (取短)</th>
+                        <th class="col-daily">當日累計</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="6" style="text-align:center; padding: 40px; color:#cbd5e1">無資料</td></tr>
+                </tbody>
+                <tfoot id="tableFooter">
+                    </tfoot>
+            </table>
+        </div>
+    </section>
+
+<script>
+/**
+ * ------------------------------------------------------------------
+ * 1. UTILS & PARSERS
+ * ------------------------------------------------------------------
+ */
+const parseCSV = (text) => {
+    const arr = [];
+    let quote = false, col = 0, row = 0, c = 0;
+    for (; c < text.length; c++) {
+        let cc = text[c], nc = text[c+1];
+        arr[row] = arr[row] || [];
+        arr[row][col] = arr[row][col] || '';
+        if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+        if (cc == '"') { quote = !quote; continue; }
+        if (cc == ',' && !quote) { ++col; continue; }
+        if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+        if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+        if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+        arr[row][col] += cc;
+    }
+    return arr;
+};
+
+const cleanAddress = (rawAddr) => {
+    if (!rawAddr) return '';
+    let addr = rawAddr.trim();
+    addr = addr.replace(/\d+鄰/g, '');
+    addr = addr.replace(/([縣市區鄉鎮])([^縣市區鄉鎮]+?)[里村]/g, '$1');
+    const match = addr.match(/^(.*?號)/);
+    if (match) addr = match[1];
+    return addr;
+};
+
+const parseTime = (timeStr) => {
+    // Convert "08:00" to minutes from midnight
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+};
+
+const formatDuration = (mins) => {
+    if (mins === 0) return '0分';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}時${m}分` : `${m}分`;
+};
+
+const parseScheduleCell = (cellText) => {
+    if (!cellText) return [];
+    const lines = cellText.split(/\r?\n/);
+    const results = [];
+    const regex = /(\d{1,2}:\d{2})(?:~(\d{1,2}:\d{2}))?\s+(.+)/;
+    lines.forEach(line => {
+        const match = line.trim().match(regex);
+        if (match) {
+            results.push({
+                startTime: match[1],
+                endTime: match[2] || '',
+                name: match[3].trim()
+            });
+        }
+    });
+    return results;
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 2. DATA PROCESSING
+ * ------------------------------------------------------------------
+ */
+const state = {
+    addresses: [],
+    scheduleMap: {}, // Date -> Event[]
+    rawScheduleRows: [],
+    monthlyTotalMins: 0
+};
+
+const processSchedule = (rows, year, month) => {
+    if (rows.length < 2) return {};
+    const eventsByDate = {};
+    const processedKeys = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        let isDateRow = false;
+        // Check if row has dates (numbers)
+        for(let c=0; c < Math.min(row.length, 7); c++) {
+            if (row[c] && /^\s*\d+/.test(row[c])) { isDateRow = true; break; }
+        }
+
+        if (isDateRow) {
+            const dataRow = rows[i+1];
+            if (!dataRow) continue;
+            
+            row.forEach((dateCell, colIndex) => {
+                if (!dateCell) return;
+                const dayMatch = dateCell.match(/^\s*(\d+)/);
+                if (!dayMatch) return;
+                
+                const dayNum = parseInt(dayMatch[1]);
+                const fullDate = `${year}-${month.toString().padStart(2,'0')}-${dayNum.toString().padStart(2,'0')}`;
+                
+                if (!eventsByDate[fullDate]) eventsByDate[fullDate] = [];
+                
+                if (dataRow[colIndex]) {
+                    const tasks = parseScheduleCell(dataRow[colIndex]);
+                    tasks.forEach(task => {
+                        const key = `${fullDate}|${task.startTime}|${task.name}`;
+                        if (!processedKeys.has(key)) {
+                            processedKeys.add(key);
+                            eventsByDate[fullDate].push({
+                                ...task,
+                                id: Math.random().toString(36).substr(2, 9),
+                                // State for calculation
+                                gapMinutes: null,
+                                apiMinutes: null,
+                                finalMinutes: null, // Min(gap, api)
+                                transitError: null
+                            });
+                        }
+                    });
+                }
+            });
+            i++; 
+        }
+    }
+
+    // Sort and Calculate Gaps (Pre-calculation)
+    Object.keys(eventsByDate).forEach(date => {
+        const events = eventsByDate[date];
+        events.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        
+        // Calculate Gaps between i and i+1
+        for (let j = 0; j < events.length - 1; j++) {
+            const current = events[j];
+            const next = events[j+1];
+            if (current.endTime && next.startTime) {
+                const endMins = parseTime(current.endTime);
+                const startMins = parseTime(next.startTime);
+                let diff = startMins - endMins;
+                if (diff < 0) diff = 0; // Overlap or error
+                current.gapMinutes = diff;
+            }
+        }
+    });
+
+    return eventsByDate;
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 3. API & LOGIC
+ * ------------------------------------------------------------------
+ */
+const log = (msg, type='info') => {
+    const box = document.getElementById('logConsole');
+    const div = document.createElement('div');
+    div.className = 'log-item ' + (type==='error'?'log-err':'');
+    div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+};
+
+const callRoutesAPI = async (origin, dest, apiKey) => {
+    try {
+        const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': apiKey,
+                'X-Goog-FieldMask': 'routes.duration'
+            },
+            body: JSON.stringify({
+                origin: { address: origin },
+                destination: { address: dest },
+                travelMode: 'DRIVE'
+            })
+        });
+        if (!res.ok) throw new Error((await res.json()).error?.message || 'Error');
+        const data = await res.json();
+        if (data.routes?.[0]?.duration) {
+            return parseInt(data.routes[0].duration.replace('s',''));
+        }
+        return 0;
+    } catch(e) { throw e; }
+};
+
+const calculateAllTransits = async () => {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if (!apiKey) return alert('請輸入 API Key');
+    localStorage.setItem('my_routes_api_key', apiKey);
+
+    const btn = document.getElementById('calcBtn');
+    const bar = document.getElementById('progressBar');
+    const logBox = document.getElementById('logConsole');
+    
+    btn.disabled = true;
+    logBox.style.display = 'block';
+    document.getElementById('progressContainer').style.display = 'block';
+    logBox.innerHTML = '';
+    log('開始計算...');
+
+    // Prepare Address Map
+    const addrMap = state.addresses.reduce((acc,cur) => {
+        acc[cur.name] = cleanAddress(cur.address); return acc;
+    }, {});
+
+    const dates = Object.keys(state.scheduleMap).sort();
+    let tasks = [];
+    
+    // Build Task List
+    dates.forEach(date => {
+        const events = state.scheduleMap[date];
+        for(let i=0; i<events.length-1; i++) {
+            tasks.push({ date, idx: i, current: events[i], next: events[i+1] });
+        }
+    });
+
+    log(`共需計算 ${tasks.length} 筆路徑`);
+
+    for(let i=0; i<tasks.length; i++) {
+        const { current, next } = tasks[i];
+        const origin = addrMap[current.name];
+        const dest = addrMap[next.name];
+        
+        // Update UI
+        bar.style.width = `${Math.round(((i+1)/tasks.length)*100)}%`;
+        document.getElementById('statusText').textContent = `${i+1}/${tasks.length}`;
+
+        if(!origin || !dest) {
+            current.transitError = '地址不全';
+            log(`跳過: ${current.name}->${next.name} (無地址)`, 'error');
+            continue;
+        }
+
+        try {
+            const sec = await callRoutesAPI(origin, dest, apiKey);
+            current.apiMinutes = Math.ceil(sec / 60);
+            
+            // Logic: Min(Gap, API)
+            // If Gap is null (no end time), assume API time? 
+            // Usually gap exists. If gap < 0, use 0.
+            const gap = current.gapMinutes !== null ? current.gapMinutes : 9999;
+            current.finalMinutes = Math.min(gap, current.apiMinutes);
+            
+            log(`OK: ${current.name}->${next.name} (Gap:${gap}m, API:${current.apiMinutes}m) => 採計:${current.finalMinutes}m`);
+            
+            // Rate Limit Buffer
+            await new Promise(r => setTimeout(r, 250));
+            
+        } catch(e) {
+            current.transitError = 'API Error';
+            log(`API Error: ${e.message}`, 'error');
+        }
+
+        if(i % 5 === 0) renderTable();
+    }
+
+    renderTable();
+    btn.disabled = false;
+    log('計算完成');
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 4. RENDERERS
+ * ------------------------------------------------------------------
+ */
+const renderAddressList = () => {
+    const container = document.getElementById('addressList');
+    container.innerHTML = '';
+    state.addresses.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'address-row';
+        div.innerHTML = `
+            <input value="${p.name}" onchange="updateAddr('${p.id}','name',this.value)">
+            <input value="${p.address}" onchange="updateAddr('${p.id}','address',this.value)">
+            <div class="addr-clean" title="${cleanAddress(p.address)}">📍 ${cleanAddress(p.address)}</div>
+            <button class="danger" style="padding:4px 8px" onclick="removeAddr('${p.id}')">✕</button>
+        `;
+        container.appendChild(div);
+    });
+};
+
+const renderTable = () => {
+    const tbody = document.getElementById('tableBody');
+    const tfoot = document.getElementById('tableFooter');
+    tbody.innerHTML = '';
+    tfoot.innerHTML = '';
+    
+    const dates = Object.keys(state.scheduleMap).sort();
+    const addrMap = state.addresses.reduce((acc,cur) => {
+        acc[cur.name] = cleanAddress(cur.address); return acc;
+    }, {});
+
+    let monthlyTotal = 0;
+
+    if(dates.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px">無資料</td></tr>';
+        return;
+    }
+
+    dates.forEach(date => {
+        const events = state.scheduleMap[date];
+        
+        // Calculate Daily Total (Sum of finalMinutes)
+        let dailyTotal = 0;
+        events.forEach(e => {
+            if (e.finalMinutes !== null) dailyTotal += e.finalMinutes;
+        });
+        monthlyTotal += dailyTotal;
+
+        events.forEach((evt, idx) => {
+            const tr = document.createElement('tr');
+            
+            // 1. Date (Rowspan)
+            if(idx === 0) {
+                const td = document.createElement('td');
+                td.rowSpan = events.length;
+                td.className = 'col-date';
+                td.textContent = date.slice(5); // MM-DD
+                tr.appendChild(td);
+            }
+
+            // 2. Time
+            const tdTime = document.createElement('td');
+            tdTime.className = 'col-time';
+            tdTime.innerHTML = `<b>${evt.startTime}</b><br><span style="color:#94a3b8; font-size:0.9em">~${evt.endTime}</span>`;
+            tr.appendChild(tdTime);
+
+            // 3. Info
+            const tdInfo = document.createElement('td');
+            tdInfo.className = 'col-info';
+            const addr = addrMap[evt.name];
+            tdInfo.innerHTML = `
+                <div class="name-tag">${evt.name}</div>
+                <div class="addr-text">${addr ? '📍 '+addr : '<span style="color:red">⚠️ 缺地址</span>'}</div>
+            `;
+            tr.appendChild(tdInfo);
+
+            // 4. Transit Info (Gap vs API)
+            const tdTransit = document.createElement('td');
+            tdTransit.className = 'col-transit-info';
+            
+            if(idx < events.length - 1) {
+                const nextName = events[idx+1].name;
+                let html = `<div style="margin-bottom:4px; font-weight:600; font-size:0.85em; color:#475569">往: ${nextName}</div>`;
+                
+                // Gap
+                const gapDisplay = evt.gapMinutes !== null ? `${evt.gapMinutes}分` : '?';
+                html += `<div class="transit-row gap-val"><span class="t-label">🕒 間隔:</span> <span class="t-val">${gapDisplay}</span></div>`;
+                
+                // API
+                if (evt.apiMinutes !== null) {
+                    html += `<div class="transit-row api-val"><span class="t-label">🚗 Google:</span> <span class="t-val">${evt.apiMinutes}分</span></div>`;
+                } else if (evt.transitError) {
+                    html += `<div class="transit-row"><span class="t-label">Google:</span> <span style="color:red">${evt.transitError}</span></div>`;
+                } else {
+                    html += `<div class="transit-row"><span class="t-label">Google:</span> <span style="color:#ccc">-</span></div>`;
+                }
+                tdTransit.innerHTML = html;
+            } else {
+                tdTransit.innerHTML = '<span style="color:#cbd5e1">(結束)</span>';
+            }
+            tr.appendChild(tdTransit);
+
+            // 5. Final (Min)
+            const tdFinal = document.createElement('td');
+            tdFinal.className = 'col-transit-final';
+            if(idx < events.length - 1) {
+                if(evt.finalMinutes !== null) {
+                    tdFinal.textContent = `${evt.finalMinutes} 分`;
+                    // Highlight if limited by Gap
+                    if(evt.gapMinutes < evt.apiMinutes) {
+                        tdFinal.title = "已取較短時間 (受限於間隔)";
+                        tdFinal.style.color = "#b45309"; // brownish
+                    }
+                } else {
+                    tdFinal.textContent = '-';
+                }
+            }
+            tr.appendChild(tdFinal);
+
+            // 6. Daily Total (Rowspan)
+            if(idx === 0) {
+                const tdTotal = document.createElement('td');
+                tdTotal.rowSpan = events.length;
+                tdTotal.className = 'col-daily';
+                tdTotal.textContent = formatDuration(dailyTotal);
+                tr.appendChild(tdTotal);
+            }
+
+            tbody.appendChild(tr);
+        });
+    });
+
+    // Footer Total
+    const trFoot = document.createElement('tr');
+    trFoot.className = 'total-row';
+    trFoot.innerHTML = `
+        <td colspan="5" style="text-align:right; padding-right:20px;">全月總計轉場時間:</td>
+        <td style="text-align:center; color:#fca5a5;">${formatDuration(monthlyTotal)}</td>
+    `;
+    tfoot.appendChild(trFoot);
+    
+    state.monthlyTotalMins = monthlyTotal;
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 5. EVENTS & EXPORT
+ * ------------------------------------------------------------------
+ */
+const exportToCSV = () => {
+    if (!state.scheduleMap || Object.keys(state.scheduleMap).length === 0) return alert('無資料可匯出');
+    
+    // Headers
+    let csvContent = '\uFEFF'; // BOM for Excel
+    csvContent += "日期,開始時間,結束時間,姓名,地址,下一站姓名,下一站地址,排程間隔(分),Google預估(分),採計時間(分),當日累計(分)\n";
+
+    const dates = Object.keys(state.scheduleMap).sort();
+    const addrMap = state.addresses.reduce((acc,cur) => {
+        acc[cur.name] = cleanAddress(cur.address); return acc;
+    }, {});
+
+    dates.forEach(date => {
+        const events = state.scheduleMap[date];
+        
+        // Calc Daily Total First
+        let dailyTotal = 0;
+        events.forEach(e => { if(e.finalMinutes) dailyTotal += e.finalMinutes; });
+
+        events.forEach((e, i) => {
+            const addr = addrMap[e.name] || '';
+            let nextName = '', nextAddr = '', gap = '', api = '', final = '';
+            
+            if (i < events.length - 1) {
+                const next = events[i+1];
+                nextName = next.name;
+                nextAddr = addrMap[next.name] || '';
+                gap = e.gapMinutes !== null ? e.gapMinutes : '';
+                api = e.apiMinutes !== null ? e.apiMinutes : '';
+                final = e.finalMinutes !== null ? e.finalMinutes : '';
+            }
+
+            // Only show daily total on first row
+            const dailyTotalStr = (i === 0) ? dailyTotal : '';
+
+            // Escape fields
+            const row = [
+                date, e.startTime, e.endTime, e.name, addr,
+                nextName, nextAddr, gap, api, final, dailyTotalStr
+            ].map(f => `"${String(f).replace(/"/g, '""')}"`).join(',');
+            
+            csvContent += row + "\n";
+        });
+    });
+    
+    // Add Footer to CSV
+    csvContent += `,,,,,,,,,"全月總計",${state.monthlyTotalMins}\n`;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'schedule_export.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+// Global Helpers for Inline Events
+window.updateAddr = (id, f, v) => {
+    const p = state.addresses.find(x => x.id == id);
+    if(p) { p[f] = v; renderAddressList(); processAndRender(); }
+};
+window.removeAddr = (id) => {
+    if(confirm('刪除?')) {
+        state.addresses = state.addresses.filter(x => x.id != id);
+        renderAddressList(); processAndRender();
+    }
+};
+
+const processAndRender = () => {
+    const y = document.getElementById('yearInput').value;
+    const m = document.getElementById('monthInput').value;
+    state.scheduleMap = processSchedule(state.rawScheduleRows, y, m);
+    renderTable();
+};
+
+// Init
+window.addEventListener('DOMContentLoaded', () => {
+    const k = localStorage.getItem('my_routes_api_key');
+    if(k) document.getElementById('apiKey').value = k;
+});
+
+document.getElementById('addressInput').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const txt = await f.text();
+    if(f.name.endsWith('.json')) state.addresses = JSON.parse(txt);
+    else state.addresses = parseCSV(txt).filter(r=>r[0]).map((r,i)=>({id:'a'+i,name:r[0].trim(),address:r[1].trim()}));
+    renderAddressList(); processAndRender();
+});
+
+document.getElementById('scheduleInput').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const txt = await f.text();
+    state.rawScheduleRows = parseCSV(txt);
+    processAndRender();
+});
+
+document.getElementById('addPersonBtn').addEventListener('click', () => {
+    state.addresses.unshift({id:'n'+Date.now(), name:'新人員', address:''});
+    renderAddressList();
+});
+document.getElementById('backupBtn').addEventListener('click', () => {
+    const b = new Blob([JSON.stringify(state.addresses,null,2)],{type:'application/json'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='address.json'; a.click();
+});
+document.getElementById('yearInput').addEventListener('change', processAndRender);
+document.getElementById('monthInput').addEventListener('change', processAndRender);
+
+</script>
+</body>
+</html>
